@@ -1,67 +1,96 @@
-from ursina import *
+import tkinter as tk
+from tkinter import ttk
+from translate import Translator
+from langdetect import detect
+from gtts import gTTS
+import os
+from playsound import playsound
 
-class Game(Ursina):
-    def __init__(self):
-        super().__init__() 
-        window.fullscreen = True
-        Entity(model='sphere', scale=100, texture='textures/sky1', double_sided=True)
-        EditorCamera()
-        camera.world_position=(0,0,-15)
-        self.model, self.texture = 'models/custom_cube', 'textures/rubik_texture'
-        self.loadGame()
+def on_click(event, text_widget, default_text):
+    if text_widget.get("1.0", tk.END).strip() == default_text:
+        text_widget.delete("1.0", tk.END)
+        text_widget.config(fg="black")
 
-    def loadGame(self):
-        self.createPosition()
-        self.CUBES = [Entity(model=self.model, texture=self.texture, position=pos) for pos in self.SIDE_POSITIONS]
-        self.PARENT = Entity()
-        self.rotation_axes = {'LEFT': 'x', 'RIGHT': 'x', 'TOP': 'y', 'BOTTOM': 'y', 'FACE': 'z', 'BACK': 'z'}
-        self.cube_positions = {'LEFT': self.LEFT, 'BOTTOM': self.BOTTOM, 'RIGHT': self.RIGHT, 'FACE': self.FACE,
-                                    'BACK': self.BACK, 'TOP': self.TOP}
-        self.animation_time = 0.2
-        self.action_trigger = True
+def on_focus_out(event, text_widget, default_text):
+    if not text_widget.get("1.0", tk.END).strip():
+        text_widget.insert(tk.END, default_text)
+        text_widget.config(fg="gray")
 
-    def rotate(self, side_name):
-        if not self.action_trigger:
-            return
+def translate_text():
+    source_text = text_box_source.get("1.0", tk.END).strip()
+    if not source_text:
+        return
 
-        self.action_trigger = False
-        cube_positions = self.cube_positions[side_name]
-        rotation_axis = self.rotation_axes[side_name]
-        self.to_scene()
-        for cube in self.CUBES:
-            if cube.position in cube_positions:
-                cube.parent = self.PARENT
-                eval(f'self.PARENT.animate_rotation_{rotation_axis}(90, duration=self.animation_time)')
-        invoke(self.animation_trigger, delay=self.animation_time + 0.11)
+    source_language = detect(source_text)
+    target_language = language_combobox.get()
 
-    def animation_trigger(self):
-        self.action_trigger = True
+    translator = Translator(from_lang=source_language, to_lang=target_language)
+    translation = translator.translate(source_text)
 
-    def to_scene(self):
-        for cube in self.CUBES:
-            if cube.parent == self.PARENT:
-                world_pos, world_rot = round(cube.world_position, 1), cube.world_rotation
-                cube.parent = scene
-                cube.position, cube.rotation = world_pos, world_rot
-        self.PARENT.rotation = 0
+    text_box_target.delete("1.0", tk.END)
+    text_box_target.insert(tk.END, translation)
 
-    def createPosition(self):
-        self.LEFT = {Vec3(-1,y,z) for y in range(-1, 2) for z in range(-1, 2)}
-        self.BOTTOM = {Vec3(x,-1,z) for x in range(-1, 2) for z in range(-1, 2)}
-        self.FACE = {Vec3(x,y,-1) for x in range(-1, 2) for y in range(-1, 2)}
-        self.BACK = {Vec3(x,y,1) for x in range(-1, 2) for y in range(-1, 2)}
-        self.RIGHT = {Vec3(1,y,z) for y in range(-1, 2) for z in range(-1, 2)}
-        self.TOP = {Vec3(x,1,z) for x in range(-1, 2) for z in range(-1, 2)}
-        self.SIDE_POSITIONS = self.LEFT | self.BOTTOM | self.FACE | self.BACK | self.RIGHT | self.TOP
+def voice_text():
+    text = text_box_target.get("1.0", tk.END).strip()
+    if not text:
+        return
 
-    def input(self, key, *args):
-        if key:
-            keys = dict(zip('asdwqe', 'LEFT BOTTOM RIGHT TOP FACE BACK'.split()))
-            if key in keys and self.action_trigger:
-                self.rotate(keys[key])
-        super().input(key, *args)
+    target_language = language_combobox.get()
 
+    # Generate the speech
+    tts = gTTS(text=text, lang=target_language)
+    tts.save("temp_audio.mp3")
 
-if __name__ == "__main__":
-    game = Game()
-    game.run()
+    # Play the speech
+    playsound("temp_audio.mp3")
+
+    # Optionally, remove the temporary file
+    os.remove("temp_audio.mp3")
+
+root = tk.Tk()
+root.title("Simple Translator")
+root.geometry("900x600")
+root.resizable(False, False)
+
+# Main Frame
+main_frame = tk.Frame(root, bg="#f0f0f0")
+main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+# Title Label
+title_label = tk.Label(main_frame, text="Text Translator", font=("Arial", 18, "bold"), bg="#f0f0f0")
+title_label.grid(row=0, column=0, columnspan=3, pady=10)
+
+# Source Text Box
+text_box_source = tk.Text(main_frame, height=15, width=35, font=("Arial", 14), fg="gray", bg="#ffffff", bd=2, relief=tk.SUNKEN)
+text_box_source.grid(row=1, column=0, padx=10, pady=10)
+default_text_source = "Enter text here..."
+text_box_source.insert(tk.END, default_text_source)
+text_box_source.bind("<FocusIn>", lambda event: on_click(event, text_box_source, default_text_source))
+text_box_source.bind("<FocusOut>", lambda event: on_focus_out(event, text_box_source, default_text_source))
+
+# Target Text Box
+text_box_target = tk.Text(main_frame, height=15, width=35, font=("Arial", 14), fg="gray", bg="#ffffff", bd=2, relief=tk.SUNKEN)
+text_box_target.grid(row=1, column=2, padx=10, pady=10)
+default_text_target = "Translated text will appear here..."
+text_box_target.insert(tk.END, default_text_target)
+text_box_target.bind("<FocusIn>", lambda event: on_click(event, text_box_target, default_text_target))
+text_box_target.bind("<FocusOut>", lambda event: on_focus_out(event, text_box_target, default_text_target))
+
+# Language Selection Combobox
+languages = ["af", "ar", "bg", "bn", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "fa", "fi", "fr", "gu", "he",
+"hi", "hr", "hu", "id", "it", "ja", "kn", "ko", "lt", "lv", "mk", "ml", "mr", "ne", "nl", "no", "pa", "pl",
+"pt", "ro", "ru", "sk", "sl", "so", "sq", "sv", "sw", "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh-cn", "zh-tw"]
+language_combobox = ttk.Combobox(main_frame, values=languages, font=("Arial", 14))
+language_combobox.grid(row=2, column=0, padx=10, pady=10)
+language_combobox.set("en")
+
+# Translate Button
+translate_button = tk.Button(main_frame, text="Translate", font=("Arial", 14, "bold"), bg="#4CAF50", fg="white", relief=tk.RAISED, command=translate_text)
+translate_button.grid(row=2, column=2, padx=10, pady=20)
+
+# Listen Button
+voice_button = tk.Button(main_frame, text="Listen", font=("Arial", 14, "bold"), bg="#2196F3", fg="white", relief=tk.RAISED, command=voice_text)
+voice_button.grid(row=3, column=2, padx=10, pady=10)
+
+# Run the application
+root.mainloop()
